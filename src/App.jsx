@@ -25,6 +25,22 @@ const SAMPLE_CSV = `DATE,COUNTRY,MEDIA,IMPRESSION,CLICKS,COST,GA_SESSION,GA_CONV
 2026-05-11,US,Meta,32000,1600,850,1500,35,2800,Casual,Social_US_Engagement,75,22
 `;
 
+const processDataWithFees = async (csv, fees) => {
+  const processed = await processData(csv, 0)
+  return processed.map(row => {
+    const fee = fees[row.MEDIA] || 0
+    const adjustedCost = row.COST * (1 + fee / 100)
+    return {
+      ...row,
+      ADJUSTED_COST: adjustedCost,
+      ROAS: adjustedCost > 0 ? (row.GA_REV / adjustedCost) * 100 : 0,
+      CPC: row.CLICKS > 0 ? adjustedCost / row.CLICKS : 0,
+      CPA: row.GA_CONV > 0 ? adjustedCost / row.GA_CONV : 0,
+      AOV: row.GA_CONV > 0 ? row.GA_REV / row.GA_CONV : 0
+    }
+  })
+}
+
 const METRIC_OPTIONS = [
   { label: 'Revenue', key: 'GA_REV', type: 'currency' },
   { label: 'Spend', key: 'ADJUSTED_COST', type: 'currency' },
@@ -43,9 +59,9 @@ function App() {
   // Data State
   const [rawCsv, setRawCsv] = useState(SAMPLE_CSV)
   const [data, setData] = useState([])
-  const [stats, setStats] = useState(null)
   const [fileName, setFileName] = useState('Sample Data Loaded')
-  
+  const [uploadError, setUploadError] = useState(null)
+
   // Agency Fee State (Media Specific)
   const [mediaFees, setMediaFees] = useState({ 'Google': 15, 'Meta': 15, 'TikTok': 15, 'Apple': 15, 'Pinterest': 15 })
   const [selectedFeeMedia, setSelectedFeeMedia] = useState('Google')
@@ -59,35 +75,22 @@ function App() {
 
   // Initial Load & Fee Updates
   useEffect(() => {
-    handleDataRefresh()
+    processDataWithFees(rawCsv, mediaFees)
+      .then(processed => {
+        setData(processed)
+        setUploadError(null)
+      })
+      .catch(e => {
+        console.error('Data refresh error:', e)
+        setUploadError('데이터 처리 중 오류가 발생했습니다. CSV 형식을 확인해주세요.')
+      })
   }, [rawCsv, mediaFees])
 
-  const handleDataRefresh = async () => {
-    const processed = await processDataWithFees(rawCsv, mediaFees)
-    setData(processed)
-  }
-
-  const handleDataLoad = async (csv, name) => {
+  const handleDataLoad = (csv, name) => {
     setRawCsv(csv)
     setFileName(name)
     setSelectedCountry('All')
     setSelectedMedia('All')
-  }
-
-  const processDataWithFees = async (csv, fees) => {
-    const processed = await processData(csv, 0)
-    return processed.map(row => {
-      const fee = fees[row.MEDIA] || 0
-      const adjustedCost = row.COST * (1 + fee / 100)
-      return {
-        ...row,
-        ADJUSTED_COST: adjustedCost,
-        ROAS: adjustedCost > 0 ? (row.GA_REV / adjustedCost) * 100 : 0,
-        CPC: row.CLICKS > 0 ? adjustedCost / row.CLICKS : 0,
-        CPA: row.GA_CONV > 0 ? adjustedCost / row.GA_CONV : 0,
-        AOV: row.GA_CONV > 0 ? row.GA_REV / row.GA_CONV : 0
-      }
-    })
   }
 
   const updateMediaFee = () => {
@@ -101,11 +104,13 @@ function App() {
     return filtered;
   }, [data, selectedCountry, selectedMedia]);
 
-  useEffect(() => {
-    if (filteredData.length > 0) {
-      setStats(getComparisonData(filteredData, periodMode));
-    } else {
-      setStats(null);
+  const stats = useMemo(() => {
+    if (filteredData.length === 0) return null;
+    try {
+      return getComparisonData(filteredData, periodMode);
+    } catch (e) {
+      console.error('Stats error:', e);
+      return null;
     }
   }, [filteredData, periodMode]);
 
@@ -127,10 +132,8 @@ function App() {
     const latestDate = [...data].sort((a,b) => new Date(b.DATE) - new Date(a.DATE))[0]?.DATE;
     const latestData = filteredData.filter(d => d.DATE === latestDate);
     
-    // Custom calculation for selected metric
     const currentMetricVal = latestData.reduce((acc, curr) => acc + (curr[selectedMetric.key] || 0), 0);
-    const prevDate = stats.previousDate; // Assuming we add this to stats or compute it
-    
+
     return (
       <div className="tab-view animate-fade-in">
         <div className="kpi-grid">
@@ -305,6 +308,11 @@ function App() {
         </div>
         <div className="sidebar-footer">
           <div className="file-status"><CheckCircle2 size={12} color="var(--success)" /><span>{fileName}</span></div>
+          {uploadError && (
+            <div style={{ fontSize: '11px', color: 'var(--danger, #E53E3E)', padding: '6px 8px', background: '#FFF5F5', borderRadius: '6px', marginBottom: '6px', lineHeight: '1.4' }}>
+              {uploadError}
+            </div>
+          )}
           <label className="btn btn-primary-upload"><Upload size={16} /> Upload Data
             <input type="file" hidden onChange={(e) => {
                const file = e.target.files[0];
@@ -313,6 +321,7 @@ function App() {
                  reader.onload = (ev) => handleDataLoad(ev.target.result, file.name);
                  reader.readAsText(file);
                }
+               e.target.value = '';
             }} accept=".csv" />
           </label>
         </div>
@@ -425,4 +434,42 @@ const AIChatBot = ({ data, selectedMetric, formatValue }) => {
   );
 }
 
-export default App
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, info) {
+    console.error('Render error:', error, info)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '12px', fontFamily: 'sans-serif' }}>
+          <div style={{ fontSize: '20px', fontWeight: 700, color: '#2D3748' }}>데이터 처리 오류</div>
+          <div style={{ fontSize: '13px', color: '#718096', maxWidth: '400px', textAlign: 'center' }}>
+            {this.state.error?.message || 'CSV 형식이 올바르지 않습니다. 파일을 확인 후 다시 업로드해 주세요.'}
+          </div>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{ marginTop: '8px', padding: '8px 20px', background: '#4F6EF7', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }}
+          >
+            다시 시도
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+const AppWithBoundary = () => (
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+)
+
+export default AppWithBoundary
