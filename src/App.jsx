@@ -1,0 +1,428 @@
+import React, { useState, useEffect, useMemo } from 'react'
+import { 
+  LayoutDashboard, BarChart3, Globe, Layers, Search, 
+  TrendingUp, TrendingDown, MessageSquare, Upload, 
+  Settings, Filter, Download, PieChart as PieIcon,
+  Image as ImageIcon, Zap, CheckCircle2, Save, ChevronDown,
+  DollarSign, Activity
+} from 'lucide-react'
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
+  ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell,
+  Legend, LineChart, Line, ComposedChart
+} from 'recharts'
+import { processData, getComparisonData } from './utils/dataProcessor'
+import './App.css'
+
+const SAMPLE_CSV = `DATE,COUNTRY,MEDIA,IMPRESSION,CLICKS,COST,GA_SESSION,GA_CONV,GA_REV,BRAND,CAMPAIGN,NEW_USER,FIRST_PURCHASE
+2026-05-12,US,Google,50000,1200,1000,1100,50,5000,Premium,Search_US_Brand,120,40
+2026-05-12,US,Meta,30000,1500,800,1400,30,2500,Casual,Social_US_Engagement,80,25
+2026-05-12,JP,Google,20000,400,500,380,10,1200,Premium,Search_JP_Brand,30,10
+2026-05-12,JP,TikTok,40000,2000,600,1800,15,1800,Casual,Video_JP_Viral,150,50
+2026-05-12,CA,Google,15000,300,400,280,8,900,Designer,Search_CA_Brand,20,5
+2026-05-12,SG,Meta,12000,250,300,240,6,750,Premium,Social_SG_Promo,15,4
+2026-05-11,US,Google,48000,1100,950,1050,45,4600,Premium,Search_US_Brand,110,38
+2026-05-11,US,Meta,32000,1600,850,1500,35,2800,Casual,Social_US_Engagement,75,22
+`;
+
+const METRIC_OPTIONS = [
+  { label: 'Revenue', key: 'GA_REV', type: 'currency' },
+  { label: 'Spend', key: 'ADJUSTED_COST', type: 'currency' },
+  { label: 'ROAS', key: 'ROAS', type: 'percentage' },
+  { label: 'Impressions', key: 'IMPRESSION', type: 'number' },
+  { label: 'Clicks', key: 'CLICKS', type: 'number' },
+  { label: 'Sessions', key: 'GA_SESSION', type: 'number' },
+  { label: 'Conversions', key: 'GA_CONV', type: 'number' },
+  { label: 'New Users', key: 'NEW_USER', type: 'number' }
+];
+
+function App() {
+  const [activeTab, setActiveTab] = useState('summary')
+  const [periodMode, setPeriodMode] = useState('Yesterday')
+  
+  // Data State
+  const [rawCsv, setRawCsv] = useState(SAMPLE_CSV)
+  const [data, setData] = useState([])
+  const [stats, setStats] = useState(null)
+  const [fileName, setFileName] = useState('Sample Data Loaded')
+  
+  // Agency Fee State (Media Specific)
+  const [mediaFees, setMediaFees] = useState({ 'Google': 15, 'Meta': 15, 'TikTok': 15, 'Apple': 15, 'Pinterest': 15 })
+  const [selectedFeeMedia, setSelectedFeeMedia] = useState('Google')
+  const [tempFeeValue, setTempFeeValue] = useState(15)
+
+  // Global Filters
+  const [selectedCountry, setSelectedCountry] = useState('All')
+  const [selectedMedia, setSelectedMedia] = useState('All')
+  const [selectedMetric, setSelectedMetric] = useState(METRIC_OPTIONS[0])
+  const [creativeMetric, setCreativeMetric] = useState('ROAS')
+
+  // Initial Load & Fee Updates
+  useEffect(() => {
+    handleDataRefresh()
+  }, [rawCsv, mediaFees])
+
+  const handleDataRefresh = async () => {
+    const processed = await processDataWithFees(rawCsv, mediaFees)
+    setData(processed)
+  }
+
+  const handleDataLoad = async (csv, name) => {
+    setRawCsv(csv)
+    setFileName(name)
+    setSelectedCountry('All')
+    setSelectedMedia('All')
+  }
+
+  const processDataWithFees = async (csv, fees) => {
+    const processed = await processData(csv, 0)
+    return processed.map(row => {
+      const fee = fees[row.MEDIA] || 0
+      const adjustedCost = row.COST * (1 + fee / 100)
+      return {
+        ...row,
+        ADJUSTED_COST: adjustedCost,
+        ROAS: adjustedCost > 0 ? (row.GA_REV / adjustedCost) * 100 : 0,
+        CPC: row.CLICKS > 0 ? adjustedCost / row.CLICKS : 0,
+        CPA: row.GA_CONV > 0 ? adjustedCost / row.GA_CONV : 0,
+        AOV: row.GA_CONV > 0 ? row.GA_REV / row.GA_CONV : 0
+      }
+    })
+  }
+
+  const updateMediaFee = () => {
+    setMediaFees(prev => ({ ...prev, [selectedFeeMedia]: tempFeeValue }))
+  }
+
+  const filteredData = useMemo(() => {
+    let filtered = data;
+    if (selectedCountry !== 'All') filtered = filtered.filter(d => d.COUNTRY === selectedCountry);
+    if (selectedMedia !== 'All') filtered = filtered.filter(d => d.MEDIA === selectedMedia);
+    return filtered;
+  }, [data, selectedCountry, selectedMedia]);
+
+  useEffect(() => {
+    if (filteredData.length > 0) {
+      setStats(getComparisonData(filteredData, periodMode));
+    } else {
+      setStats(null);
+    }
+  }, [filteredData, periodMode]);
+
+  const formatValue = (val, type) => {
+    if (type === 'currency') return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val || 0);
+    if (type === 'percentage') return `${Math.round(val || 0)}%`;
+    return new Intl.NumberFormat('en-US').format(Math.round(val || 0));
+  }
+
+  const getChange = (curr, prev) => prev ? ((curr - prev) / prev) * 100 : 0
+
+  const countries = useMemo(() => ['All', ...new Set(data.map(d => d.COUNTRY))].filter(Boolean), [data]);
+  const mediasList = useMemo(() => ['All', ...new Set(data.map(d => d.MEDIA))].filter(Boolean), [data]);
+
+  // --- Views ---
+
+  const renderSummaryView = () => {
+    if (!stats) return <div className="card loading-state">조회할 데이터가 없습니다.</div>;
+    const latestDate = [...data].sort((a,b) => new Date(b.DATE) - new Date(a.DATE))[0]?.DATE;
+    const latestData = filteredData.filter(d => d.DATE === latestDate);
+    
+    // Custom calculation for selected metric
+    const currentMetricVal = latestData.reduce((acc, curr) => acc + (curr[selectedMetric.key] || 0), 0);
+    const prevDate = stats.previousDate; // Assuming we add this to stats or compute it
+    
+    return (
+      <div className="tab-view animate-fade-in">
+        <div className="kpi-grid">
+          <KPICard label="Selected Metric" value={formatValue(currentMetricVal, selectedMetric.type)} sublabel={selectedMetric.label} icon={<Activity size={16} color="var(--primary)" />} />
+          <KPICard label="Total Spend" value={formatValue(stats.current.cost, 'currency')} change={getChange(stats.current.cost, stats.previous.cost)} isNegativeGood />
+          <KPICard label="Revenue" value={formatValue(stats.current.revenue, 'currency')} change={getChange(stats.current.revenue, stats.previous.revenue)} />
+          <KPICard label="ROAS" value={formatValue(stats.current.roas, 'percentage')} change={getChange(stats.current.roas, stats.previous.roas)} />
+        </div>
+
+        <div className="grid-2">
+          <div className="card">
+            <h3>{selectedMetric.label} Trend</h3>
+            <div style={{ height: '280px' }}>
+              <ResponsiveContainer>
+                <AreaChart data={filteredData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EDF2F7" />
+                  <XAxis dataKey="DATE" tick={{fontSize: 10}} />
+                  <YAxis hide />
+                  <Tooltip />
+                  <Area type="monotone" dataKey={selectedMetric.key} stroke="var(--primary)" fill="#E3E9FF" fillOpacity={0.5} name={selectedMetric.label} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="card">
+            <h3>{selectedMetric.label} by Media</h3>
+            <div style={{ height: '280px' }}>
+              <ResponsiveContainer>
+                <BarChart data={latestData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EDF2F7" />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="MEDIA" type="category" width={60} axisLine={false} tickLine={false} />
+                  <Tooltip />
+                  <Bar dataKey={selectedMetric.key} fill="var(--primary)" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderGAAnalysisView = () => {
+    const latestDate = [...data].sort((a,b) => new Date(b.DATE) - new Date(a.DATE))[0]?.DATE;
+    const latestData = filteredData.filter(d => d.DATE === latestDate);
+    if (latestData.length === 0) return <div className="card loading-state">조회할 GA 데이터가 없습니다.</div>;
+
+    return (
+      <div className="tab-view animate-fade-in">
+        <div className="card">
+          <h3>GA Performance: {selectedMetric.label} Analysis</h3>
+          <div style={{ height: '350px' }}>
+            <ResponsiveContainer>
+              <ComposedChart data={filteredData}>
+                <XAxis dataKey="DATE" tick={{fontSize: 10}} />
+                <YAxis yAxisId="left" hide />
+                <Tooltip />
+                <Bar yAxisId="left" dataKey={selectedMetric.key} fill="#EBECF0" barSize={30} name={selectedMetric.label} />
+                <Line yAxisId="left" type="monotone" dataKey="GA_CONV" stroke="var(--primary)" strokeWidth={3} dot={{r: 4}} name="Conversions" />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderMultiChannelView = () => {
+    const latestDate = [...data].sort((a,b) => new Date(b.DATE) - new Date(a.DATE))[0]?.DATE;
+    const latestData = filteredData.filter(d => d.DATE === latestDate);
+    return (
+      <div className="tab-view animate-fade-in">
+        <div className="card">
+          <div className="table-header">
+            <h3>Channel Deep-dive: {selectedMetric.label} Focus</h3>
+          </div>
+          <div className="data-table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th>Media</th>
+                  <th>Campaign</th>
+                  <th className="text-right">Selected Metric: {selectedMetric.label}</th>
+                  <th className="text-right">ROAS</th>
+                  <th className="text-right">Adjusted Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {latestData.map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.COUNTRY}</td>
+                    <td><span className="media-badge">{row.MEDIA}</span></td>
+                    <td>{row.CAMPAIGN}</td>
+                    <td className="text-right"><strong>{formatValue(row[selectedMetric.key], selectedMetric.type)}</strong></td>
+                    <td className="text-right">{Math.round(row.ROAS)}%</td>
+                    <td className="text-right">{formatValue(row.ADJUSTED_COST, 'currency')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderCreativeView = () => {
+    const latestDate = [...data].sort((a,b) => new Date(b.DATE) - new Date(a.DATE))[0]?.DATE;
+    const latestData = filteredData.filter(d => d.DATE === latestDate);
+    return (
+      <div className="tab-view animate-fade-in">
+        <div className="creative-grid">
+          {latestData.map((row, i) => (
+            <div key={i} className="creative-card card">
+              <div className="creative-img">
+                <ImageIcon size={32} color="#CBD5E0" />
+                <div className="img-overlay">{row.MEDIA}</div>
+              </div>
+              <div className="creative-info">
+                <div className="creative-name">{row.CAMPAIGN}</div>
+                <div className="creative-meta">{row.COUNTRY}</div>
+                <div className="creative-efficiency">
+                  <span className="label">{selectedMetric.label}</span>
+                  <span className="value">{formatValue(row[selectedMetric.key], selectedMetric.type)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const renderContent = () => {
+    if (data.length === 0) return <div className="card loading-state">데이터 로드 중...</div>;
+    switch (activeTab) {
+      case 'summary': return renderSummaryView();
+      case 'ga': return renderGAAnalysisView();
+      case 'multi-channel': return renderMultiChannelView();
+      case 'creative': return renderCreativeView();
+      default: return renderSummaryView();
+    }
+  }
+
+  return (
+    <div className="dashboard-layout">
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <Zap className="text-primary" fill="var(--primary)" />
+          <span>OPTIMIZER</span>
+        </div>
+        <div className="sidebar-section-label">ANALYSIS</div>
+        <nav className="sidebar-nav">
+          <NavItem icon={<LayoutDashboard size={18} />} label="Campaign Summary" active={activeTab === 'summary'} onClick={() => setActiveTab('summary')} />
+          <NavItem icon={<BarChart3 size={18} />} label="GA Integrated Analysis" active={activeTab === 'ga'} onClick={() => setActiveTab('ga')} />
+          <NavItem icon={<Layers size={18} />} label="Multi-channel Analysis" active={activeTab === 'multi-channel'} onClick={() => setActiveTab('multi-channel')} />
+          <NavItem icon={<Search size={18} />} label="Creative Analysis" active={activeTab === 'creative'} onClick={() => setActiveTab('creative')} />
+        </nav>
+        <div className="sidebar-section-label">SETTINGS</div>
+        <div className="sidebar-fee-manager">
+          <div className="sidebar-fee-row"><DollarSign size={16} /><span>Media Fee Settings</span></div>
+          <div className="sidebar-fee-controls">
+            <select value={selectedFeeMedia} onChange={(e) => {
+              setSelectedFeeMedia(e.target.value);
+              setTempFeeValue(mediaFees[e.target.value] || 15);
+            }}>{mediasList.filter(m => m !== 'All').map(m => <option key={m} value={m}>{m}</option>)}</select>
+            <div className="sidebar-fee-input"><input type="number" value={tempFeeValue} onChange={(e) => setTempFeeValue(Number(e.target.value))} /><span>%</span></div>
+            <button className="sidebar-fee-btn" onClick={updateMediaFee}><Save size={14} /> Update</button>
+          </div>
+        </div>
+        <div className="sidebar-footer">
+          <div className="file-status"><CheckCircle2 size={12} color="var(--success)" /><span>{fileName}</span></div>
+          <label className="btn btn-primary-upload"><Upload size={16} /> Upload Data
+            <input type="file" hidden onChange={(e) => {
+               const file = e.target.files[0];
+               if (file) {
+                 const reader = new FileReader();
+                 reader.onload = (ev) => handleDataLoad(ev.target.result, file.name);
+                 reader.readAsText(file);
+               }
+            }} accept=".csv" />
+          </label>
+        </div>
+      </aside>
+
+      <div className="main-wrapper">
+        <header className="header">
+          <div className="header-left">
+            <div className="global-filter-row">
+              <div className="capsule-select">
+                <span className="capsule-label">Country</span>
+                <div className="select-wrapper">
+                  <select value={selectedCountry} onChange={(e) => setSelectedCountry(e.target.value)}>
+                    {countries.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="chevron" />
+                </div>
+              </div>
+              <div className="capsule-select">
+                <span className="capsule-label">Media</span>
+                <div className="select-wrapper">
+                  <select value={selectedMedia} onChange={(e) => setSelectedMedia(e.target.value)}>
+                    {mediasList.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="chevron" />
+                </div>
+              </div>
+              <div className="capsule-select active-primary">
+                <span className="capsule-label">Metric</span>
+                <div className="select-wrapper">
+                  <select value={selectedMetric.key} onChange={(e) => setSelectedMetric(METRIC_OPTIONS.find(m => m.key === e.target.value))}>
+                    {METRIC_OPTIONS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="chevron" />
+                </div>
+              </div>
+              <div className="capsule-tabs">
+                {['Yesterday', 'WoW', 'MoM', 'YoY'].map(mode => (
+                  <button key={mode} className={`capsule-btn ${periodMode === mode ? 'active' : ''}`} onClick={() => setPeriodMode(mode)}>{mode}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="header-right">
+            <button className="icon-btn"><Settings size={18} /></button>
+          </div>
+        </header>
+
+        <main className="main-content">
+          {renderContent()}
+        </main>
+      </div>
+
+      <AIChatBot data={filteredData} selectedMetric={selectedMetric} formatValue={formatValue} />
+    </div>
+  )
+}
+
+// --- Helper Components ---
+
+const NavItem = ({ icon, label, active, onClick }) => (
+  <div className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}>
+    {icon} <span>{label}</span>
+  </div>
+)
+
+const KPICard = ({ label, value, sublabel, change, icon, isNegativeGood }) => (
+  <div className="card kpi-card">
+    <div className="kpi-top">
+      <div className="kpi-label">{sublabel || label}</div>
+      {icon}
+    </div>
+    <div className="kpi-value">{value}</div>
+    {change !== undefined && (
+      <div className={`kpi-change ${change >= 0 ? (isNegativeGood ? 'change-down' : 'change-up') : (isNegativeGood ? 'change-up' : 'change-down')}`}>
+        {change >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+        {Math.abs(change).toFixed(1)}%
+      </div>
+    )}
+  </div>
+)
+
+const AIChatBot = ({ data, selectedMetric, formatValue }) => {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState([{ role: 'ai', content: '데이터 분석 도와드릴까요?' }]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!input.trim() || data.length === 0) return;
+    const userMsg = { role: 'user', content: input };
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
+    setTimeout(() => {
+      setMessages(prev => [...prev, { role: 'ai', content: `현재 선택된 지표(${selectedMetric.label})를 중심으로 분석 중입니다.` }]);
+    }, 800);
+  };
+
+  return (
+    <div className={`chat-widget ${open ? 'open' : ''}`}>
+      <button className="chat-trigger" onClick={() => setOpen(!open)}><MessageSquare size={24} /></button>
+      {open && (
+        <div className="chat-window card">
+          <div className="chat-header">AI Analyst <button onClick={() => setOpen(false)}>×</button></div>
+          <div className="chat-messages">{messages.map((m, i) => <div key={i} className={`message ${m.role}`}><div className="message-bubble">{m.content}</div></div>)}</div>
+          <form className="chat-input" onSubmit={handleSubmit}><input type="text" value={input} onChange={(e) => setInput(e.target.value)} /><button type="submit">전송</button></form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App
