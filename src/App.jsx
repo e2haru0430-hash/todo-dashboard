@@ -64,7 +64,7 @@ function App() {
   const [uploadError, setUploadError] = useState(null)
 
   // Agency Fee State (Media Specific)
-  const [mediaFees, setMediaFees] = useState({ 'Google': 15, 'Meta': 15, 'TikTok': 15, 'Apple': 15, 'Pinterest': 15 })
+  const [mediaFees, setMediaFees] = useState({ 'Google': 15, 'Pinterest': 15, 'Meta': 15, 'Line': 15, 'Tiktok': 15 })
   const [selectedFeeMedia, setSelectedFeeMedia] = useState('Google')
   const [tempFeeValue, setTempFeeValue] = useState(15)
 
@@ -110,7 +110,6 @@ function App() {
     return new Intl.NumberFormat('en-US').format(Math.round(val || 0));
   }
 
-  const mediasList = useMemo(() => ['All', ...new Set(data.map(d => d.MEDIA))].filter(Boolean), [data]);
 
   // --- Views ---
 
@@ -369,7 +368,7 @@ function App() {
             <select value={selectedFeeMedia} onChange={(e) => {
               setSelectedFeeMedia(e.target.value);
               setTempFeeValue(mediaFees[e.target.value] || 15);
-            }}>{mediasList.filter(m => m !== 'All').map(m => <option key={m} value={m}>{m}</option>)}</select>
+            }}>{MEDIA_OPTIONS.filter(m => m !== 'All').map(m => <option key={m} value={m}>{m}</option>)}</select>
             <div className="sidebar-fee-input"><input type="number" value={tempFeeValue} onChange={(e) => setTempFeeValue(Number(e.target.value))} /><span>%</span></div>
             <button className="sidebar-fee-btn" onClick={updateMediaFee}><Save size={14} /> Update</button>
           </div>

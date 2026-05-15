@@ -136,9 +136,9 @@ body {
   width: 100%;
   background: transparent;
   border: none;
-  color: var(--primary);
+  color: #FFAB00;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 16px;
   outline: none;
 }
 
@@ -410,10 +410,11 @@ td { padding: 14px 12px; border-bottom: 1px solid var(--bg-main); font-size: 13p
 }
 
 .metric-box-value {
-  font-size: 18px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--text-main);
   white-space: nowrap;
+  line-height: 1.1;
 }
 
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
