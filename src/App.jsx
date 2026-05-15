@@ -195,15 +195,13 @@ function App() {
     return (
       <div className="tab-view animate-fade-in">
         {/* Metric boxes */}
-        <div className="card" style={{ padding: '16px 20px', marginBottom: '20px' }}>
-          <div className="metric-grid">
-            {METRICS.map(m => (
-              <div key={m.label} className="metric-box">
-                <div className="metric-box-label">{m.label}</div>
-                <div className="metric-box-value">{m.value}</div>
-              </div>
-            ))}
-          </div>
+        <div className="metric-grid" style={{ marginBottom: '24px' }}>
+          {METRICS.map(m => (
+            <div key={m.label} className="metric-box">
+              <div className="metric-box-label">{m.label}</div>
+              <div className="metric-box-value">{m.value}</div>
+            </div>
+          ))}
         </div>
 
         {/* Charts */}
