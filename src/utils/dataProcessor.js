@@ -11,26 +11,38 @@ export const processData = (csvText, agencyFee = 0) => {
         const rawData = results.data;
         const processed = rawData.map(row => {
           // Normalize common field variations
-          const cost = row.COST || row.AD_SPEND || row.SPEND || 0;
+          const cost        = Number(row.COST || row.AD_SPEND || row.SPEND || 0);
           const adjustedCost = cost * (1 + agencyFee / 100);
-          const revenue = row.GA_REV || row.REVENUE || row.SALES || 0;
-          const conv = row.GA_CONV || row.PURCHASE || row.CONVERSIONS || 0;
-          const impressions = row.IMPRESSION || row.IMPRESSIONS || 0;
-          const clicks = row.CLICKS || 0;
-          
+          const revenue     = Number(row.GA_REV || row.REVENUE || row.SALES || 0);
+          const conv        = Number(row.GA_CONV || row.PURCHASE || row.CONVERSIONS || 0);
+          const impressions = Number(row.IMPRESSION || row.IMPRESSIONS || 0);
+          const clicks      = Number(row.CLICKS || 0);
+          const sessions    = Number(row.GA_SESSION || row.UV || row.SESSION || row.SESSIONS || 0);
+          const newUser     = Number(row.NEW_USER || row['새사용자'] || 0);
+          const firstPurch  = Number(row.FIRST_PURCHASE || row['첫구매'] || 0);
+          const cart        = Number(row.CART || row.GA_CART || row['장바구니'] || 0);
+          const mediaConv   = Number(row.MEDIA_CONV || row.MEDIA_CONVERSION || row['매체전환수'] || 0);
+          const mediaConvVal= Number(row.MEDIA_CONV_VALUE || row.MEDIA_REVENUE || row['매체전환값'] || 0);
+
           return {
             ...row,
-            IMPRESSION: impressions,
-            CLICKS: clicks,
-            COST: cost,
-            ADJUSTED_COST: adjustedCost,
-            GA_REV: revenue,
-            GA_CONV: conv,
-            ROAS: adjustedCost > 0 ? (revenue / adjustedCost) * 100 : 0,
-            CTR: impressions > 0 ? (clicks / impressions) * 100 : 0,
-            CPC: clicks > 0 ? adjustedCost / clicks : 0,
-            CPA: conv > 0 ? adjustedCost / conv : 0,
-            AOV: conv > 0 ? revenue / conv : 0
+            IMPRESSION:       impressions,
+            CLICKS:           clicks,
+            COST:             cost,
+            ADJUSTED_COST:    adjustedCost,
+            GA_REV:           revenue,
+            GA_CONV:          conv,
+            GA_SESSION:       sessions,
+            NEW_USER:         newUser,
+            FIRST_PURCHASE:   firstPurch,
+            CART:             cart,
+            MEDIA_CONV:       mediaConv,
+            MEDIA_CONV_VALUE: mediaConvVal,
+            ROAS:   adjustedCost > 0 ? (revenue / adjustedCost) * 100 : 0,
+            CTR:    impressions > 0  ? (clicks / impressions) * 100 : 0,
+            CPC:    clicks > 0       ? adjustedCost / clicks : 0,
+            CPA:    conv > 0         ? adjustedCost / conv : 0,
+            AOV:    conv > 0         ? revenue / conv : 0
           };
         });
         resolve(processed);

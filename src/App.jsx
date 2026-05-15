@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { 
-  LayoutDashboard, BarChart3, Globe, Layers, Search, 
-  TrendingUp, TrendingDown, MessageSquare, Upload, 
-  Settings, Filter, Download, PieChart as PieIcon,
+import {
+  LayoutDashboard, BarChart3, Layers, Search,
+  MessageSquare, Upload, Settings,
   Image as ImageIcon, Zap, CheckCircle2, Save, ChevronDown,
-  DollarSign, Activity
+  DollarSign
 } from 'lucide-react'
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell,
-  Legend, LineChart, Line, ComposedChart
+import {
+  Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Legend, Line, ComposedChart
 } from 'recharts'
-import { processData, getComparisonData } from './utils/dataProcessor'
+import { processData } from './utils/dataProcessor'
 import './App.css'
 
 const SAMPLE_CSV = `DATE,COUNTRY,MEDIA,IMPRESSION,CLICKS,COST,GA_SESSION,GA_CONV,GA_REV,BRAND,CAMPAIGN,NEW_USER,FIRST_PURCHASE
@@ -52,6 +50,9 @@ const METRIC_OPTIONS = [
   { label: 'New Users', key: 'NEW_USER', type: 'number' }
 ];
 
+const COUNTRY_OPTIONS = ['All', 'US', 'CA', 'JP', 'AU', 'EU', 'INT'];
+const MEDIA_OPTIONS   = ['All', 'Google', 'Pinterest', 'Meta', 'Line', 'Tiktok'];
+
 function App() {
   const [activeTab, setActiveTab] = useState('summary')
   const [periodMode, setPeriodMode] = useState('Yesterday')
@@ -70,8 +71,7 @@ function App() {
   // Global Filters
   const [selectedCountry, setSelectedCountry] = useState('All')
   const [selectedMedia, setSelectedMedia] = useState('All')
-  const [selectedMetric, setSelectedMetric] = useState(METRIC_OPTIONS[0])
-  const [creativeMetric, setCreativeMetric] = useState('ROAS')
+  const selectedMetric = METRIC_OPTIONS[0]
 
   // Initial Load & Fee Updates
   useEffect(() => {
@@ -104,71 +104,141 @@ function App() {
     return filtered;
   }, [data, selectedCountry, selectedMedia]);
 
-  const stats = useMemo(() => {
-    if (filteredData.length === 0) return null;
-    try {
-      return getComparisonData(filteredData, periodMode);
-    } catch (e) {
-      console.error('Stats error:', e);
-      return null;
-    }
-  }, [filteredData, periodMode]);
-
   const formatValue = (val, type) => {
     if (type === 'currency') return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val || 0);
     if (type === 'percentage') return `${Math.round(val || 0)}%`;
     return new Intl.NumberFormat('en-US').format(Math.round(val || 0));
   }
 
-  const getChange = (curr, prev) => prev ? ((curr - prev) / prev) * 100 : 0
-
-  const countries = useMemo(() => ['All', ...new Set(data.map(d => d.COUNTRY))].filter(Boolean), [data]);
   const mediasList = useMemo(() => ['All', ...new Set(data.map(d => d.MEDIA))].filter(Boolean), [data]);
 
   // --- Views ---
 
   const renderSummaryView = () => {
-    if (!stats) return <div className="card loading-state">조회할 데이터가 없습니다.</div>;
-    const latestDate = [...data].sort((a,b) => new Date(b.DATE) - new Date(a.DATE))[0]?.DATE;
-    const latestData = filteredData.filter(d => d.DATE === latestDate);
-    
-    const currentMetricVal = latestData.reduce((acc, curr) => acc + (curr[selectedMetric.key] || 0), 0);
+    if (!filteredData.length) return <div className="card loading-state">조회할 데이터가 없습니다.</div>;
+
+    const s = (key) => filteredData.reduce((a, r) => a + (Number(r[key]) || 0), 0);
+
+    const impression   = s('IMPRESSION');
+    const clicks       = s('CLICKS');
+    const cost         = s('ADJUSTED_COST');
+    const uv           = s('GA_SESSION');
+    const newUser      = s('NEW_USER');
+    const conv         = s('GA_CONV');
+    const rev          = s('GA_REV');
+    const firstPurch   = s('FIRST_PURCHASE');
+    const cart         = s('CART') || s('GA_CART');
+    const mediaConv    = s('MEDIA_CONV') || s('MEDIA_CONVERSION');
+    const mediaConvVal = s('MEDIA_CONV_VALUE') || s('MEDIA_REVENUE');
+
+    const ctr          = impression > 0 ? clicks / impression * 100 : 0;
+    const cpc          = clicks > 0 ? cost / clicks : 0;
+    const cpuv         = uv > 0 ? cost / uv : 0;
+    const newCpuv      = newUser > 0 ? cost / newUser : 0;
+    const newUserRatio = uv > 0 ? newUser / uv * 100 : 0;
+    const cvr          = uv > 0 ? conv / uv * 100 : 0;
+    const cpa          = conv > 0 ? cost / conv : 0;
+    const roas         = cost > 0 ? rev / cost * 100 : 0;
+    const aov          = conv > 0 ? rev / conv : 0;
+    const fpCpa        = firstPurch > 0 ? cost / firstPurch : 0;
+    const mediaRoas    = cost > 0 ? mediaConvVal / cost * 100 : 0;
+
+    const n  = (v)    => new Intl.NumberFormat('en-US').format(Math.round(v || 0));
+    const d2 = (v)    => (v || 0).toFixed(2);
+    const pct= (v, dp=2) => `${(v || 0).toFixed(dp)}%`;
+
+    const METRICS = [
+      { label: 'IMPRESSION',   value: n(impression) },
+      { label: 'CLICKS',       value: n(clicks) },
+      { label: 'COST',         value: n(cost) },
+      { label: 'CTR',          value: pct(ctr) },
+      { label: 'CPC',          value: d2(cpc) },
+      { label: 'UV',           value: n(uv) },
+      { label: 'CPUV',         value: d2(cpuv) },
+      { label: '새사용자',      value: n(newUser) },
+      { label: 'NEW_CPUV',     value: d2(newCpuv) },
+      { label: '새사용자비중',  value: pct(newUserRatio) },
+      { label: 'CVR',          value: pct(cvr) },
+      { label: '구매수',        value: n(conv) },
+      { label: '구매 CPA',     value: d2(cpa) },
+      { label: '매출',          value: n(rev) },
+      { label: 'ROAS',         value: `${Math.round(roas)}%` },
+      { label: '객단가',        value: d2(aov) },
+      { label: '첫구매',        value: n(firstPurch) },
+      { label: '첫구매 CPA',   value: d2(fpCpa) },
+      { label: '장바구니',      value: n(cart) },
+      { label: '매체 전환수',   value: n(mediaConv) },
+      { label: '매체 전환값',   value: n(mediaConvVal) },
+      { label: '매체 ROAS',    value: `${Math.round(mediaRoas)}%` },
+    ];
+
+    // Country-level aggregates for charts
+    const byCountry = Object.values(
+      filteredData.reduce((acc, row) => {
+        const c = row.COUNTRY || 'N/A';
+        if (!acc[c]) acc[c] = { country: c, _rev: 0, _cost: 0, _newUser: 0, _uv: 0, _conv: 0 };
+        acc[c]._rev     += Number(row.GA_REV)       || 0;
+        acc[c]._cost    += Number(row.ADJUSTED_COST) || 0;
+        acc[c]._newUser += Number(row.NEW_USER)      || 0;
+        acc[c]._uv      += Number(row.GA_SESSION)    || 0;
+        acc[c]._conv    += Number(row.GA_CONV)       || 0;
+        return acc;
+      }, {})
+    ).map(c => ({
+      country:    c.country,
+      ROAS:       c._cost > 0 ? Math.round(c._rev / c._cost * 100) : 0,
+      새사용자비중: c._uv > 0 ? parseFloat((c._newUser / c._uv * 100).toFixed(1)) : 0,
+      구매수:     Math.round(c._conv),
+      객단가:     c._conv > 0 ? Math.round(c._rev / c._conv) : 0,
+    }));
 
     return (
       <div className="tab-view animate-fade-in">
-        <div className="kpi-grid">
-          <KPICard label="Selected Metric" value={formatValue(currentMetricVal, selectedMetric.type)} sublabel={selectedMetric.label} icon={<Activity size={16} color="var(--primary)" />} />
-          <KPICard label="Total Spend" value={formatValue(stats.current.cost, 'currency')} change={getChange(stats.current.cost, stats.previous.cost)} isNegativeGood />
-          <KPICard label="Revenue" value={formatValue(stats.current.revenue, 'currency')} change={getChange(stats.current.revenue, stats.previous.revenue)} />
-          <KPICard label="ROAS" value={formatValue(stats.current.roas, 'percentage')} change={getChange(stats.current.roas, stats.previous.roas)} />
+        {/* Metric boxes */}
+        <div className="card" style={{ padding: '16px 20px', marginBottom: '20px' }}>
+          <div className="metric-grid">
+            {METRICS.map(m => (
+              <div key={m.label} className="metric-box">
+                <div className="metric-box-label">{m.label}</div>
+                <div className="metric-box-value">{m.value}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
+        {/* Charts */}
         <div className="grid-2">
           <div className="card">
-            <h3>{selectedMetric.label} Trend</h3>
-            <div style={{ height: '280px' }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '14px', fontWeight: 700 }}>국가별 ROAS 및 새사용자비중</h3>
+            <div style={{ height: '260px' }}>
               <ResponsiveContainer>
-                <AreaChart data={filteredData}>
+                <ComposedChart data={byCountry} margin={{ top: 4, right: 20, bottom: 4, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EDF2F7" />
-                  <XAxis dataKey="DATE" tick={{fontSize: 10}} />
-                  <YAxis hide />
-                  <Tooltip />
-                  <Area type="monotone" dataKey={selectedMetric.key} stroke="var(--primary)" fill="#E3E9FF" fillOpacity={0.5} name={selectedMetric.label} />
-                </AreaChart>
+                  <XAxis dataKey="country" tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 10 }} unit="%" />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} unit="%" />
+                  <Tooltip formatter={(v, name) => [`${v}%`, name]} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar yAxisId="left" dataKey="ROAS" fill="var(--primary)" name="ROAS" radius={[4,4,0,0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="새사용자비중" stroke="#FFAB00" strokeWidth={2} dot={{ r: 4 }} name="새사용자비중" />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
           <div className="card">
-            <h3>{selectedMetric.label} by Media</h3>
-            <div style={{ height: '280px' }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '14px', fontWeight: 700 }}>국가별 구매건수 및 객단가</h3>
+            <div style={{ height: '260px' }}>
               <ResponsiveContainer>
-                <BarChart data={latestData} layout="vertical">
+                <ComposedChart data={byCountry} margin={{ top: 4, right: 20, bottom: 4, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EDF2F7" />
-                  <XAxis type="number" hide />
-                  <YAxis dataKey="MEDIA" type="category" width={60} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="country" tick={{ fontSize: 11 }} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
                   <Tooltip />
-                  <Bar dataKey={selectedMetric.key} fill="var(--primary)" radius={[0, 4, 4, 0]} />
-                </BarChart>
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar yAxisId="left" dataKey="구매수" fill="#36B37E" name="구매수" radius={[4,4,0,0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="객단가" stroke="#FF5630" strokeWidth={2} dot={{ r: 4 }} name="객단가" />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
@@ -335,7 +405,7 @@ function App() {
                 <span className="capsule-label">Country</span>
                 <div className="select-wrapper">
                   <select value={selectedCountry} onChange={(e) => setSelectedCountry(e.target.value)}>
-                    {countries.map(c => <option key={c} value={c}>{c}</option>)}
+                    {COUNTRY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <ChevronDown size={14} className="chevron" />
                 </div>
@@ -344,16 +414,7 @@ function App() {
                 <span className="capsule-label">Media</span>
                 <div className="select-wrapper">
                   <select value={selectedMedia} onChange={(e) => setSelectedMedia(e.target.value)}>
-                    {mediasList.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <ChevronDown size={14} className="chevron" />
-                </div>
-              </div>
-              <div className="capsule-select active-primary">
-                <span className="capsule-label">Metric</span>
-                <div className="select-wrapper">
-                  <select value={selectedMetric.key} onChange={(e) => setSelectedMetric(METRIC_OPTIONS.find(m => m.key === e.target.value))}>
-                    {METRIC_OPTIONS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                    {MEDIA_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                   <ChevronDown size={14} className="chevron" />
                 </div>
@@ -388,21 +449,6 @@ const NavItem = ({ icon, label, active, onClick }) => (
   </div>
 )
 
-const KPICard = ({ label, value, sublabel, change, icon, isNegativeGood }) => (
-  <div className="card kpi-card">
-    <div className="kpi-top">
-      <div className="kpi-label">{sublabel || label}</div>
-      {icon}
-    </div>
-    <div className="kpi-value">{value}</div>
-    {change !== undefined && (
-      <div className={`kpi-change ${change >= 0 ? (isNegativeGood ? 'change-down' : 'change-up') : (isNegativeGood ? 'change-up' : 'change-down')}`}>
-        {change >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-        {Math.abs(change).toFixed(1)}%
-      </div>
-    )}
-  </div>
-)
 
 const AIChatBot = ({ data, selectedMetric, formatValue }) => {
   const [open, setOpen] = useState(false);
